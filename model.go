@@ -1,4 +1,4 @@
-package cromwell_api
+package gromwell
 
 import (
 	"net/url"
@@ -60,7 +60,7 @@ func (cromwellClient CromwellClient) submit(command SubmitCommand) (*http.Respon
 		if err != nil { return nil, err }
 		defer optionsFile.Close()
 
-		fw, err := w.CreateFormFile("workflowInputs", workflowOptions)
+		fw, err := w.CreateFormFile("workflowOptions", workflowOptions)
 		if err != nil { return nil, err	}
 		if _, err = io.Copy(fw, optionsFile); err != nil { return nil, err }
 	}
@@ -95,36 +95,47 @@ type WorkflowStatus struct {
 	Status string
 }
 
-type WorkflowOutputs struct {
+type JsonResponse struct {
 	Id string
-	Outputs map[string]interface{}
+	JsonValue []byte
+}
+
+type WorkflowOutputs struct {
+	*JsonResponse
 }
 
 type WorkflowMetadata struct {
-	Id string
-	Metadata []byte
+	*JsonResponse
 }
 
 func (outputs WorkflowOutputs) String() string {
-	prettyJson, err := prettyPrint(outputs.Outputs)
-	if (err != nil) { return fmt.Sprintf("%s", err) }
-	return fmt.Sprintf("outputs for %s:\n %s\n", outputs.Id, prettyJson)
+	outputsMetadata, err := outputs.toJson()
+	if (err != nil) { return err.Error() }
+	return fmt.Sprintf("outputs for %s:\n %s\n", outputs.Id, prettyPrint(outputsMetadata))
 }
 
 func (metadata WorkflowMetadata) String() string {
-	var rawMetadata map[string]interface{}
-	err := json.Unmarshal(metadata.Metadata, &rawMetadata)
-	if (err != nil) { panic(err) }
-	prettyJson, err := prettyPrint(rawMetadata)
-	if (err != nil) { return fmt.Sprintf("%s", err) }
-	return fmt.Sprintf("metadata for %s:\n %s\n", metadata.Id, prettyJson)
+	jsonMetadata, err := metadata.toJson()
+	if (err != nil) { return err.Error() }
+	return fmt.Sprintf("metadata for %s:\n %s\n", metadata.Id, prettyPrint(jsonMetadata))
 }
 
 func (status WorkflowStatus) String() string {
 	return fmt.Sprintf("%s: %s\n", status.Id, status.Status)
 }
 
-func prettyPrint(data interface{}) (string, error) {
+func (jsonResponse *JsonResponse) toJson() (map[string]interface{}, error) {
+	return parseJson(jsonResponse.JsonValue)
+}
+
+func prettyPrint(data interface{}) string {
 	b, err := json.MarshalIndent(data, "", "  ")
-	return string(b), err
+	if (err != nil) { return fmt.Sprintf("%s", err) }
+	return string(b)
+}
+
+func parseJson(bytes []byte) (map[string]interface{}, error) {
+	var jsonObject map[string]interface{}
+	err := json.Unmarshal(bytes, &jsonObject)
+	return jsonObject, err
 }

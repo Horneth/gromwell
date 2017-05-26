@@ -1,4 +1,4 @@
-package cromwell_api
+package gromwell
 
 import (
 	"net/http"
@@ -17,13 +17,13 @@ const outputsEndpoint = "/outputs"
 const metadataEndpoint = "/metadata"
 const abortEndpoint = "/abort"
 
-func (client CromwellClient) AbortWorkflow(workflowId string) (WorkflowStatus, error) {
-	var status WorkflowStatus
+func (client CromwellClient) AbortWorkflow(workflowId string) (*WorkflowStatus, error) {
+	var status *WorkflowStatus
 	body, err := getResponseBody(http.Post(client.makeWorkflowEndpointPath(workflowId, abortEndpoint), "text/plain", strings.NewReader("")))
 	if (err != nil) {
 		return status, err
 	}
-	err = json.Unmarshal(body, &status)
+	err = json.Unmarshal(body, status)
 	if (err != nil) {
 		return status, err
 	}
@@ -40,60 +40,65 @@ func (client CromwellClient) Version() (string, error) {
 	return version, err
 }
 
-func (client CromwellClient) SubmitWorkflow(command SubmitCommand) (WorkflowStatus, error) {
-	var status WorkflowStatus
+func (client CromwellClient) SubmitWorkflow(command SubmitCommand) (*WorkflowStatus, error) {
+	var status *WorkflowStatus
 	body, err := getResponseBody(client.submit(command))
 	if (err != nil) {
 		return status, err
 	}
-	err = json.Unmarshal(body, &status)
+	err = json.Unmarshal(body, status)
 	if (err != nil) {
 		return status, err
 	}
 	return status, err
 }
 
-func (client CromwellClient) GetWorkflowStatus(workflowId string) (WorkflowStatus, error) {
-	var status WorkflowStatus
+func (client CromwellClient) GetWorkflowStatus(workflowId string) (*WorkflowStatus, error) {
+	var status *WorkflowStatus
 	body, err := getResponseBody(http.Get(client.makeWorkflowEndpointPath(workflowId, statusEndpoint)))
 	if (err != nil) {
 		return status, err
 	}
-	err = json.Unmarshal(body, &status)
+	err = json.Unmarshal(body, status)
 	if (err != nil) {
 		return status, err
 	}
 	return status, err
 }
 
-func (client CromwellClient) GetWorkflowOutputs(workflowId string) (WorkflowOutputs, error) {
-	var outputs WorkflowOutputs
+func (client CromwellClient) GetWorkflowOutputs(workflowId string) (*WorkflowOutputs, error) {
+	var outputs *WorkflowOutputs
+
+	// Get Body
 	body, err := getResponseBody(http.Get(client.makeWorkflowEndpointPath(workflowId, outputsEndpoint)))
-	if (err != nil) {
-		return outputs, err
+	if (err != nil) { return outputs, err }
+
+	// Construct response
+	outputs = &WorkflowOutputs {
+		JsonResponse: &JsonResponse {
+			Id: workflowId,
+			JsonValue: body,
+		},
 	}
-	err = json.Unmarshal(body, &outputs)
-	if (err != nil) {
-		return outputs, err
-	}
+
 	return outputs, err
 }
 
-func (client CromwellClient) GetWorkflowMetadata(workflowId string) (WorkflowMetadata, error) {
-	var metadata WorkflowMetadata
-	var rawMetadata map[string]interface{}
+func (client CromwellClient) GetWorkflowMetadata(workflowId string) (*WorkflowMetadata, error) {
+	var metadata *WorkflowMetadata
+
+	// Get Body
 	body, err := getResponseBody(http.Get(client.makeWorkflowEndpointPath(workflowId, metadataEndpoint)))
-	if (err != nil) {
-		return metadata, err
+	if (err != nil) { return metadata, err }
+
+	// Construct response
+	metadata = &WorkflowMetadata {
+		JsonResponse: &JsonResponse {
+			Id: workflowId,
+			JsonValue: body,
+		},
 	}
-	err = json.Unmarshal(body, &rawMetadata)
-	if (err != nil) {
-		return metadata, err
-	}
-	metadata = WorkflowMetadata {
-		Id: rawMetadata["id"].(string),
-		Metadata: body,
-	}
+
 	return metadata, err
 }
 
@@ -103,7 +108,7 @@ func getResponseBody(resp *http.Response, err error) ([]byte, error) {
 	if (err != nil) {
 		return body, err
 	}
-	if (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated) {
+	if (resp.StatusCode >= 200 && resp.StatusCode < 300) {
 		return body, errors.New("Status query failed: " + resp.Status)
 	}
 	body, err = ioutil.ReadAll(resp.Body)
